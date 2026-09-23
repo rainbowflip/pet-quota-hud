@@ -11,8 +11,8 @@ func petRect(_ root: [String: Any]) -> CGRect? {
     return CGRect(x: x, y: y, width: 112, height: 121)
 }
 
-func appKitHUDRect(pet: CGRect, desktopTop: Double, visibleFrame: CGRect, offset: Double) -> CGRect {
-    let width = 220.0, height = 30.0
+func appKitHUDRect(pet: CGRect, desktopTop: Double, visibleFrame: CGRect, offset: Double, showCountdown: Bool) -> CGRect {
+    let width = showCountdown ? 190.0 : 148.0, height = 30.0
     let x = max(visibleFrame.minX, min(visibleFrame.maxX - width, pet.midX - width / 2))
     let y = max(visibleFrame.minY, min(visibleFrame.maxY - height, desktopTop - pet.minY + offset))
     return CGRect(x: x, y: y, width: width, height: height)
@@ -47,13 +47,14 @@ final class PetTracker {
 
 final class HUDView: NSView {
     var quota: Quota? { didSet { needsDisplay = true } }
+    var showCountdown = true { didSet { needsDisplay = true } }
     var stale = false { didSet { if oldValue != stale { needsDisplay = true } } }
     override var isOpaque: Bool { false }
     override func draw(_ dirtyRect: NSRect) {
         NSColor.clear.setFill(); bounds.fill()
         let gold = NSColor(calibratedRed: 0.68, green: 0.55, blue: 0.30, alpha: 1)
         let background = NSColor(calibratedRed: 0.055, green: 0.075, blue: 0.09, alpha: 0.96)
-        let body = NSBezierPath(roundedRect: NSRect(x: 23, y: 3, width: 194, height: 24), xRadius: 3, yRadius: 3)
+        let body = NSBezierPath(roundedRect: NSRect(x: 23, y: 3, width: bounds.width - 26, height: 24), xRadius: 3, yRadius: 3)
         background.setFill(); body.fill()
         func text(_ value: String, x: CGFloat, centeredIn rect: NSRect, size: CGFloat, color: NSColor = .white, rightAligned: Bool = false) {
             let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold), .foregroundColor: color]
@@ -74,7 +75,7 @@ final class HUDView: NSView {
             return remainder == 0 ? "\(days)d" : "\(days)d\(remainder)h"
         }
         func bar(_ remaining: Double?, resetAt: Double?, y: Double, color: NSColor, label: String) {
-            let r = NSRect(x: 23, y: y, width: 194, height: 12)
+            let r = NSRect(x: 23, y: y, width: bounds.width - 26, height: 12)
             NSColor(white: 0.15, alpha: 1).setFill(); r.fill()
             if let value = remaining {
                 color.withAlphaComponent(stale ? 0.42 : 0.90).setFill()
@@ -84,8 +85,12 @@ final class HUDView: NSView {
             }
             text(label, x: 35, centeredIn: r, size: 8)
             let value = remaining.map { String(format: "%.0f%%", $0) } ?? "—"
-            text(value + (stale ? "·" : ""), x: r.maxX - 72, centeredIn: r, size: 8, rightAligned: true)
-            text(countdown(resetAt), x: r.maxX - 5, centeredIn: r, size: 7, rightAligned: true)
+            let percentage = value + (stale ? "·" : "")
+            if showCountdown {
+                text("\(percentage) \(countdown(resetAt))", x: r.maxX - 5, centeredIn: r, size: 8, rightAligned: true)
+            } else {
+                text(percentage, x: r.maxX - 5, centeredIn: r, size: 8, rightAligned: true)
+            }
         }
         NSGraphicsContext.saveGraphicsState()
         body.addClip()
@@ -105,7 +110,7 @@ final class HUDView: NSView {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-    let hud = HUDView(frame: NSRect(x: 0, y: 0, width: 220, height: 30))
+    let hud = HUDView(frame: NSRect(x: 0, y: 0, width: 190, height: 30))
     let tracker = PetTracker()
     var status: NSStatusItem!
     var timer: Timer?
@@ -115,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastSignalsRead = 0.0
     var error = ""
     var offset: Double = UserDefaults.standard.double(forKey: "headOffset")
+    var showCountdown = UserDefaults.standard.object(forKey: "showResetCountdown") as? Bool ?? true
     var minuteTick = Int(Date().timeIntervalSince1970 / 60) { didSet { hud.needsDisplay = true } }
     var demo = CommandLine.arguments.contains("--demo")
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -124,6 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.ignoresMouseEvents = true; panel.level = NSWindow.Level(rawValue: 2)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.hidesOnDeactivate = false; panel.contentView = hud
+        hud.showCountdown = showCountdown
+        if !showCountdown { hud.setFrameSize(NSSize(width: 148, height: 30)) }
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         status.button?.title = "◈"
         if let data = try? Data(contentsOf: Paths.support.appendingPathComponent("quota.json")) {
@@ -139,6 +147,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func refresh() { policy.request(at: Date().timeIntervalSince1970) }
     @objc func higher() { offset += 4; saveOffset() }
     @objc func lower() { offset -= 4; saveOffset() }
+    @objc func toggleCountdown() {
+        showCountdown.toggle()
+        UserDefaults.standard.set(showCountdown, forKey: "showResetCountdown")
+        hud.showCountdown = showCountdown
+        tick()
+        updateMenu()
+    }
     func saveOffset() { UserDefaults.standard.set(offset, forKey: "headOffset"); tick() }
     @objc func quit() { NSApp.terminate(nil) }
     func updateMenu() {
@@ -150,6 +165,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if !error.isEmpty { menu.addItem(withTitle: error, action: nil, keyEquivalent: "") }
         menu.addItem(.separator())
+        let countdownItem = menu.addItem(withTitle: "显示重置倒计时", action: #selector(toggleCountdown), keyEquivalent: "")
+        countdownItem.target = self; countdownItem.state = showCountdown ? .on : .off
         for (title, action) in [("刷新额度", #selector(refresh)), ("位置上移 4px", #selector(higher)), ("位置下移 4px", #selector(lower)), ("退出", #selector(quit))] {
             let item = menu.addItem(withTitle: title, action: action, keyEquivalent: ""); item.target = self
         }
@@ -168,14 +185,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     func tick() {
         let now = Date().timeIntervalSince1970
-        minuteTick = Int(now / 60)
+        let currentMinute = Int(now / 60)
+        if showCountdown, currentMinute != minuteTick { minuteTick = currentMinute }
         readSignals(now: now)
         let pet = demo ? CGRect(x: 650, y: 500, width: 112, height: 121) : tracker.read()
         guard let pet, let main = NSScreen.screens.first else { panel.orderOut(nil); return }
         let top = main.frame.maxY
         let center = CGPoint(x: pet.midX, y: top - pet.midY)
         guard let screen = NSScreen.screens.first(where: { $0.frame.contains(center) }) else { panel.orderOut(nil); return }
-        let frame = appKitHUDRect(pet: pet, desktopTop: top, visibleFrame: screen.visibleFrame, offset: offset)
+        let frame = appKitHUDRect(pet: pet, desktopTop: top, visibleFrame: screen.visibleFrame, offset: offset, showCountdown: showCountdown)
         if panel.frame != frame { panel.setFrame(frame, display: true) }
         if !panel.isVisible { panel.orderFrontRegardless(); policy.request(at: now) }
         hud.stale = !error.isEmpty || now - (hud.quota?.fetchedAt ?? 0) > 600

@@ -20,7 +20,7 @@ if args.contains("--diagnose") {
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 if let index = args.firstIndex(of: "--snapshot"), args.count > index + 1 {
-    let view = HUDView(frame: NSRect(x: 0, y: 0, width: 220, height: 30))
+    let view = HUDView(frame: NSRect(x: 0, y: 0, width: 190, height: 30))
     view.quota = Quota(fiveHour: 72, weekly: 64, resets: 1, fiveHourResetsAt: Date().addingTimeInterval(3_594).timeIntervalSince1970, weeklyResetsAt: Date().addingTimeInterval(48 * 3600).timeIntervalSince1970)
     let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
     view.cacheDisplay(in: view.bounds, to: rep)

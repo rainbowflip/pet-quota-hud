@@ -12,7 +12,7 @@ func petRect(_ root: [String: Any]) -> CGRect? {
 }
 
 func appKitHUDRect(pet: CGRect, desktopTop: Double, visibleFrame: CGRect, offset: Double) -> CGRect {
-    let width = 148.0, height = 30.0
+    let width = 220.0, height = 30.0
     let x = max(visibleFrame.minX, min(visibleFrame.maxX - width, pet.midX - width / 2))
     let y = max(visibleFrame.minY, min(visibleFrame.maxY - height, desktopTop - pet.minY + offset))
     return CGRect(x: x, y: y, width: width, height: height)
@@ -53,15 +53,28 @@ final class HUDView: NSView {
         NSColor.clear.setFill(); bounds.fill()
         let gold = NSColor(calibratedRed: 0.68, green: 0.55, blue: 0.30, alpha: 1)
         let background = NSColor(calibratedRed: 0.055, green: 0.075, blue: 0.09, alpha: 0.96)
-        let body = NSBezierPath(roundedRect: NSRect(x: 23, y: 3, width: 123, height: 24), xRadius: 3, yRadius: 3)
+        let body = NSBezierPath(roundedRect: NSRect(x: 23, y: 3, width: 194, height: 24), xRadius: 3, yRadius: 3)
         background.setFill(); body.fill()
         func text(_ value: String, x: CGFloat, centeredIn rect: NSRect, size: CGFloat, color: NSColor = .white, rightAligned: Bool = false) {
             let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: size, weight: .semibold), .foregroundColor: color]
             let dimensions = (value as NSString).size(withAttributes: attributes)
             (value as NSString).draw(at: NSPoint(x: rightAligned ? x - dimensions.width : x, y: rect.midY - dimensions.height / 2), withAttributes: attributes)
         }
-        func bar(_ remaining: Double?, y: Double, color: NSColor, label: String) {
-            let r = NSRect(x: 23, y: y, width: 123, height: 12)
+        func countdown(_ resetAt: Double?) -> String {
+            guard let resetAt else { return "--" }
+            let minutes = max(0, Int(ceil((resetAt - Date().timeIntervalSince1970) / 60)))
+            if minutes < 60 { return "\(minutes)m" }
+            let hours = minutes / 60
+            if hours < 24 {
+                let remainder = minutes % 60
+                return remainder == 0 ? "\(hours)h" : "\(hours)h\(remainder)m"
+            }
+            let days = hours / 24
+            let remainder = hours % 24
+            return remainder == 0 ? "\(days)d" : "\(days)d\(remainder)h"
+        }
+        func bar(_ remaining: Double?, resetAt: Double?, y: Double, color: NSColor, label: String) {
+            let r = NSRect(x: 23, y: y, width: 194, height: 12)
             NSColor(white: 0.15, alpha: 1).setFill(); r.fill()
             if let value = remaining {
                 color.withAlphaComponent(stale ? 0.42 : 0.90).setFill()
@@ -71,12 +84,13 @@ final class HUDView: NSView {
             }
             text(label, x: 35, centeredIn: r, size: 8)
             let value = remaining.map { String(format: "%.0f%%", $0) } ?? "—"
-            text(value + (stale ? "·" : ""), x: r.maxX - 4, centeredIn: r, size: 8, rightAligned: true)
+            text(value + (stale ? "·" : ""), x: r.maxX - 72, centeredIn: r, size: 8, rightAligned: true)
+            text(countdown(resetAt), x: r.maxX - 5, centeredIn: r, size: 7, rightAligned: true)
         }
         NSGraphicsContext.saveGraphicsState()
         body.addClip()
-        bar(quota?.fiveHour, y: 15, color: NSColor(calibratedRed: 0.19, green: 0.69, blue: 0.38, alpha: 1), label: "5H")
-        bar(quota?.weekly, y: 3, color: NSColor(calibratedRed: 0.17, green: 0.47, blue: 0.88, alpha: 1), label: "周")
+        bar(quota?.fiveHour, resetAt: quota?.fiveHourResetsAt, y: 15, color: NSColor(calibratedRed: 0.19, green: 0.69, blue: 0.38, alpha: 1), label: "5H")
+        bar(quota?.weekly, resetAt: quota?.weeklyResetsAt, y: 3, color: NSColor(calibratedRed: 0.17, green: 0.47, blue: 0.88, alpha: 1), label: "周")
         NSGraphicsContext.restoreGraphicsState()
         gold.setStroke(); body.lineWidth = 1; body.stroke()
         let badge = NSBezierPath(ovalIn: NSRect(x: 2, y: 3, width: 24, height: 24))
@@ -91,7 +105,7 @@ final class HUDView: NSView {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let panel = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-    let hud = HUDView(frame: NSRect(x: 0, y: 0, width: 148, height: 30))
+    let hud = HUDView(frame: NSRect(x: 0, y: 0, width: 220, height: 30))
     let tracker = PetTracker()
     var status: NSStatusItem!
     var timer: Timer?
@@ -101,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastSignalsRead = 0.0
     var error = ""
     var offset: Double = UserDefaults.standard.double(forKey: "headOffset")
+    var minuteTick = Int(Date().timeIntervalSince1970 / 60) { didSet { hud.needsDisplay = true } }
     var demo = CommandLine.arguments.contains("--demo")
     func applicationDidFinishLaunching(_ notification: Notification) {
         try? Paths.prepare()
@@ -153,6 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     func tick() {
         let now = Date().timeIntervalSince1970
+        minuteTick = Int(now / 60)
         readSignals(now: now)
         let pet = demo ? CGRect(x: 650, y: 500, width: 112, height: 121) : tracker.read()
         guard let pet, let main = NSScreen.screens.first else { panel.orderOut(nil); return }

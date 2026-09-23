@@ -5,6 +5,8 @@ struct Quota: Codable, Equatable {
     var fiveHour: Double?
     var weekly: Double?
     var resets: Int?
+    var fiveHourResetsAt: Double?
+    var weeklyResetsAt: Double?
     var resetTimes: [Double] = []
     var fetchedAt = Date().timeIntervalSince1970
     static func parse(_ root: [String: Any]) -> Quota {
@@ -17,8 +19,8 @@ struct Quota: Codable, Equatable {
                   let used = w["usedPercent"] as? Double, used.isFinite else { continue }
             let duration = durationNumber.intValue
             let remaining = max(0, min(100, 100 - used))
-            if duration == 300 { q.fiveHour = remaining }
-            if duration == 10080 { q.weekly = remaining }
+            if duration == 300 { q.fiveHour = remaining; q.fiveHourResetsAt = (w["resetsAt"] as? Double) }
+            if duration == 10080 { q.weekly = remaining; q.weeklyResetsAt = (w["resetsAt"] as? Double) }
             if [300, 10080].contains(duration), let reset = w["resetsAt"] as? Double { q.resetTimes.append(reset) }
         }
         if let credits = root["rateLimitResetCredits"] as? [String: Any], let count = credits["availableCount"] as? Int, count >= 0 { q.resets = count }

@@ -207,7 +207,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case .success(let quota):
                     self.hud.quota = quota; self.hud.stale = false; self.error = ""
                     if let bytes = try? JSONEncoder().encode(quota) { try? bytes.write(to: Paths.support.appendingPathComponent("quota.json"), options: .atomic) }
-                case .failure: self.error = "额度读取失败 · 保留旧值"; self.hud.stale = true
+                case .failure(let failure):
+                    self.error = (failure as? ProbeError) == .unavailable ? "未找到 Codex CLI · 保留旧值" : "额度读取失败 · 保留旧值"
+                    self.hud.stale = true
                 }
                 self.updateMenu()
             }

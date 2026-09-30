@@ -43,7 +43,13 @@ enum Paths {
         try FileManager.default.createDirectory(at: signals, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     }
     static func codexExecutable() -> String? {
-        let candidates = [ProcessInfo.processInfo.environment["PET_QUOTA_CODEX"], "/Applications/ChatGPT.app/Contents/Resources/codex", "/Applications/Codex.app/Contents/Resources/codex", "/opt/homebrew/bin/codex", "/usr/local/bin/codex"].compactMap { $0 }
+        let candidates = [ProcessInfo.processInfo.environment["PET_QUOTA_CODEX"],
+                          "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
+                          "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+                          "/Applications/ChatGPT.app/Contents/Resources/codex",
+                          "/Applications/Codex.app/Contents/Resources/codex-cli/bin/codex",
+                          "/Applications/Codex.app/Contents/Resources/codex",
+                          "/opt/homebrew/bin/codex", "/usr/local/bin/codex"].compactMap { $0 }
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 }
